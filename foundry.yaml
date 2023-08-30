@@ -1,0 +1,126 @@
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: foundry-pod
+  labels:
+    app: foundry-pod
+spec:
+  volumes:
+    - name: foundry-volume
+      hostPath:
+        path: /mnt/Dreamer/container/foundryvtt
+        type: DirectoryOrCreate
+  containers:
+    - name: foundry
+      image: felddy/foundryvtt:11
+      env:
+       - name: CONTAINER_PRESERVE_CONFIG
+         value: "true"
+       - name: FOUNDRY_USERNAME
+         valueFrom:
+           secretKeyRef:
+             name: foundry-secrets
+             key: username
+       - name: FOUNDRY_PASSWORD
+         valueFrom:
+           secretKeyRef:
+             name: foundry-secrets
+             key: password
+      ports:
+        - containerPort: 30000
+      volumeMounts:
+        - name: foundry-volume
+          mountPath: /data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: foundry-svc
+spec:
+  type: ClusterIP
+  selector:
+    app: foundry-pod
+  ports:
+  - protocol: TCP
+    port: 80
+    targetPort: 30000
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: foundry-ingress
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    kubernetes.io/ingress.class: "public"
+    nginx.ingress.kubernetes.io/proxy-buffer-size: "128k"
+    nginx.ingress.kubernetes.io/proxy-body-size: "1g"
+spec:
+  tls:
+  - hosts:
+    - vtt.tvonsegg.com
+    secretName: tvonsegg-foundry-tls
+  rules:
+    - host: vtt.tvonsegg.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: foundry-svc
+                port:
+                  number: 80
+---
+--- #ddb proxy
+---
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: foundry-proxy-pod
+  labels:
+    app: foundry-proxy-pod
+spec:
+  containers:
+    - name: foundry-proxy
+      image: ghcr.io/mrprimate/ddb-proxy:latest
+      ports:
+        - containerPort: 3000
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: foundry-proxy-svc
+spec:
+  type: ClusterIP
+  selector:
+    app: foundry-proxy-pod
+  ports:
+  - protocol: TCP
+    port: 80
+    targetPort: 3000
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: foundry-proxy-ingress
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    kubernetes.io/ingress.class: "public"
+spec:
+  tls:
+  - hosts:
+    - vttproxy.tvonsegg.com
+    secretName: tvonsegg-foundryproxy-tls
+  rules:
+    - host: vttproxy.tvonsegg.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: foundry-proxy-svc
+                port:
+                  number: 80

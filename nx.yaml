@@ -1,0 +1,88 @@
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: nginx-html
+spec:
+  accessModes:
+    - ReadWriteOnce
+  #storageClassName: local-path
+  resources:
+    requests:
+      storage: 0.5Gi
+---
+#apiVersion: v1
+#kind: ConfigMap
+#metadata:
+  #name: index-html-configmap2
+  #namespace: default
+#data:
+  #index.html: |
+    #<html>
+    #<h1>Welcome to tvonsegg.com!</h1>
+    #</br>
+    #<h1>... coming soon...</h1>
+    #</html>
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-d
+spec:
+  selector:
+    matchLabels:
+      app: nginx-d
+  template:
+    metadata:
+      labels:
+        app: nginx-d
+    spec:
+      containers:
+      - name: nginx-d
+        image: nginx:stable
+        ports:
+        - containerPort: 80
+        volumeMounts:
+        - name: htmldir
+          mountPath: /usr/share/nginx/html
+      volumes:
+      - name: htmldir
+        persistentVolumeClaim:
+          claimName: nginx-html
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: webserver-svc
+spec:
+  type: ClusterIP
+  selector:
+    app: nginx-d
+  ports:
+  - protocol: TCP
+    port: 80
+    targetPort: 80
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: web-ingress
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    kubernetes.io/ingress.class: "public"
+spec:
+  tls:
+  - hosts:
+    - tvonsegg.com
+    secretName: tvonsegg-tls-4
+  rules:
+    - host: tvonsegg.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: webserver-svc
+                port:
+                  number: 80

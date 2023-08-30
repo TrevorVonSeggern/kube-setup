@@ -1,0 +1,77 @@
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: jellyfin-pod
+  labels:
+    app: jellyfin-pod
+spec:
+  volumes:
+    - name: jellyfin-config-volume
+      hostPath:
+        path: /mnt/Dreamer/container/jellyfin
+        type: DirectoryOrCreate
+    - name: jellyfin-movies-volume
+      hostPath:
+        path: /mnt/Dreamer/movies
+        type: DirectoryOrCreate
+    - name: jellyfin-tv-volume
+      hostPath:
+        path: /mnt/Dreamer/Tv
+        type: DirectoryOrCreate
+  containers:
+    - name: jellyfin
+      image: lscr.io/linuxserver/jellyfin
+      env:
+       - name: PUID
+         value: "1000"
+       - name: PGID
+         value: "1000"
+       - name: TZ
+         value: "America/Denver"
+      ports:
+        - containerPort: 8096
+      volumeMounts:
+        - name: jellyfin-config-volume
+          mountPath: /config
+        - name: jellyfin-movies-volume
+          mountPath: /data/movies
+        - name: jellyfin-tv-volume
+          mountPath: /data/tvshows
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: jellyfin-svc
+spec:
+  type: ClusterIP
+  selector:
+    app: jellyfin-pod
+  ports:
+  - protocol: TCP
+    port: 80
+    targetPort: 8096
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: jellyfin-ingress
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    kubernetes.io/ingress.class: "public"
+spec:
+  tls:
+  - hosts:
+    - jellyfin.tvonsegg.com
+    secretName: tvonsegg-jellyfin-tls
+  rules:
+    - host: jellyfin.tvonsegg.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: jellyfin-svc
+                port:
+                  number: 80
